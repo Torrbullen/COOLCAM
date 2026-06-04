@@ -1,3 +1,6 @@
+#ifndef TYPES_H
+#define TYPES_H
+
 typedef unsigned char undefined;
 typedef unsigned char byte;
 typedef unsigned int dword;
@@ -44,40 +47,11 @@ typedef struct  {
     float w;
 } Vec4;
 
-
 typedef struct  {
     Vec4 forward;
     Vec4 right;
     Vec4 up;
 } mtx3;
-
-typedef struct {
-    void* grid;
-    float pad1;
-    float pad2;
-    float pad3;
-    int count;
-    int damage_next;
-    Moby* pMoby;
-    int poly;
-    Vec4 ip;
-    Vec4 push;
-    Vec4 normal;
-    Vec4 forward;
-    Vec4 right;
-    Vec4 up;
-} CollOutput;
-
-typedef struct {
-	unsigned int start_color;
-	unsigned int transition_color;
-	short unk;
-	short size;
-	unsigned int frames;
-} ChargeParticle;
-
-
-
 
 struct Moby {
     byte bSphere[16];
@@ -176,14 +150,4 @@ struct Moby {
     Vec4 rotation;
 } __attribute__((packed));
 
-
-typedef struct BoltVars BoltVars;
-
-struct BoltVars {
-    int32_t bolt_slot;
-    int32_t cuboid1;
-    int32_t cuboid2;
-    byte idc1;
-    byte skip_animation;
-    undefined1 idc2[114];
-} __attribute__((packed));
+#endif

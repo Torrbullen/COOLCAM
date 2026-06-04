@@ -1,3 +1,7 @@
+# Start of globals. enablemod should be at the start of the struct ALWAYS.
+# Or else this will fail to work
+.equ enablemod, 0xD9F000
+
 .global camlock1
 camlock1:
     lis     r9, enablemod@ha
