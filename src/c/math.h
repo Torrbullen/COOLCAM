@@ -23,6 +23,15 @@ Vec4 vec_add(Vec4 v, Vec4 u){
 	return result;
 }
 
+Vec4 vec_sub(Vec4 v, Vec4 u) {
+	Vec4 result;
+	result.x = v.x - u.x;
+	result.y = v.y - u.y;
+	result.z = v.z - u.z;
+	
+	return result;
+}
+
 void vec_clear(Vec4 *v){
 	v->x = 0;
 	v->y = 0;
@@ -66,6 +75,13 @@ int factorial(int x){
 float sin(float v){
 	while (v > PI) v -= 2.0f * PI;
 	while (v < -PI) v += 2.0f * PI;
+	
+	if(v > PI / 2.0f) 
+		v = PI - v;
+	
+	if(v < -PI / 2.0f) 
+		v = -PI - v;
+
 
 	float x,y,sum = 0.0f;
 	int z = 0;
@@ -82,6 +98,7 @@ float sin(float v){
 	}	
 	return sum;
 }
+
 
 float cos(float v){
 	return sin(PI / 2.0f - v);
@@ -122,6 +139,43 @@ void identity(Vec4 v) {
 	v.z = 1;
 	v.w = 0;
 }
+
+float arcsin(float x) {
+	float y = x + 0.5f * power(x, 3) / 3 
+	+ (0.5f * 0.75f) * power(x, 5) / 5
+	+ (0.5f * 0.75f * (5.0f/6.0f)) * power(x, 7) / 7;
+	
+	return y;
+}
+
+float arctan(float x) {
+	float y = x - power(x,3)/3 + power(x,5)/5 - power(x,7)/7 + power(x,9)/9;
+	return y;
+}
+
+
+
+float arctan2(float y, float x) {
+	if (x == 0.0f) {
+		if (y > 0.0f) return PI / 2.0f;
+		if (y < 0.0f) return -PI / 2.0f;
+		return 0.0f;
+	}
+	
+	float abs_x = x < 0.0f ? -x : x;
+	float abs_y = y < 0.0f ? -y : y;
+	float a = abs_y < abs_x ? abs_y / abs_x : abs_x / abs_y;
+	float s = a * a;
+	float r = ((-0.0464964749f * s + 0.15931422f) * s - 0.327622764f) * s * a + a;
+	
+	if (abs_y > abs_x) r = PI / 2.0f - r;
+	if (x < 0.0f) r = PI - r;
+	if (y < 0.0f) r = -r;
+	
+	return r;
+}
+
+
 
 
 #endif
