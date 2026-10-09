@@ -20,6 +20,12 @@ typedef struct {
 	Vec4 pos;
 } Camera;
 
+typedef struct {
+	Vec4 pos;
+	float pitch;
+	float yaw;
+} LerpPoint;
+
 // Used for saving camera position
 typedef struct {
 	int saved;
@@ -39,18 +45,29 @@ typedef struct {
 	int   		operatingCamera;		// d9f00c
 	int   		lookAtMode;				// d9f010
 	int   		lockWithoutStrafe;		// d9f014
-	int   		isSmooth;				// d9f018
+	int   		Lerping;				// d9f018
 	
 	// speed changes via racman
 	float 		rotationSpeed;			// d9f01c
 	float	 	moveSpeed;				// d9f020
-	float 		rotationFriction; 		// d9f028
-	float 		moveFriction; 			// d9f024
+	float 		rotationFriction; 		// d9f024
+	float 		moveFriction; 			// d9f028
 	
 	// current save position... set via racman
 	Savepos		savedPosition;			// d9f02c
 	
+	// lerping
+	int			saveLerpPoint;			// d9f078
+					
+	float       tSpeed;					// d9f07c
+	int 		lerpCount;				// d9f080
+	int			cycleLookAt;			// d9f084
+	
 	// DONT CARE.
+	float 		t;	
+	LerpPoint 	lerpPoints[32];
+	LerpPoint 	tmp[32];
+
 	int   		init;
 	int   		buttonCooldown;
 	Vec4  		acceleration;
@@ -60,14 +77,14 @@ typedef struct {
 	Vec4  		worldUp;
 	Vec4  		lock;
 	Vec4   		iter;
-	float 		yaw;
-	float 		pitch;
-	float 		yawVelocity;
-	float 		pitchVelocity;
-	float 		yawAcceleration;
-	float 		pitchAcceleration;
-	float 		horizontal;
-	cellPadData prevInput;
+	float 		yaw;				// temp
+	float 		pitch;				// temp
+	float 		yawVelocity;		// temp
+	float 		pitchVelocity;		// temp
+	float 		yawAcceleration;	// temp
+	float 		pitchAcceleration;	// temp
+	float 		horizontal;			// temp
+	cellPadData prevInput;			// temp
 } CAMERA_MOD;
 
 // OUR STRUCT <3 
@@ -91,29 +108,42 @@ void setlookAtTarget(){
 	vec_clear(&c.iter);	
 }
 
-void setLookAtRatchet(){
-	c.lookAtTarget.x = player_coords.x;
-	c.lookAtTarget.y = player_coords.y;
-	c.lookAtTarget.z = player_coords.z;
-	c.lookAtTarget.w = 0;
-	vec_clear(&c.iter);
-}
-
 void lookAt(Vec4 pos){
-	camera->forward.x = -(camera->pos.x - pos.x);
-	camera->forward.y = -(camera->pos.y - pos.y);
-	camera->forward.z = -(camera->pos.z - pos.z);
-	camera->forward = normalize(camera->forward);
 	Vec4 worldUp;
 	worldUp.x = 0;
 	worldUp.y = 0;
 	worldUp.z = 1;
-	worldUp.w = 0;		
-	camera->right = normalize(cross(worldUp, camera->forward));
-	camera->up = normalize(cross(camera->forward, camera->right));
-	c.lookatpos = pos;
+	worldUp.w = 0;	
+	
+	Vec4 fwd = normalize(vec_sub(pos, camera->pos));
+	Vec4 right = normalize(cross(worldUp, fwd));
+	
+	c.pitch = arcsin(-fwd.z) / PI * 180.0f;
+	c.yaw = arctan2(fwd.y, fwd.x) / PI * 180.0f;
 }
 
+//t is the percentage amount to step, range is 0 - 1
+LerpPoint BezierCurve(LerpPoint* Arr, int numPoints, float t)
+{
+    memcpy(c.tmp, Arr, numPoints * sizeof(LerpPoint));
+    int i = numPoints - 1;
+    while (i > 0) {
+        for (int k = 0; k < i; k++)
+		{
+            c.tmp[k].pos = vec_add(c.tmp[k].pos, scalar_multiplication(t, vec_add(c.tmp[k+1].pos, scalar_multiplication(-1.0f, c.tmp[k].pos))));
+			c.tmp[k].pitch = c.tmp[k].pitch + t * (c.tmp[k+1].pitch - c.tmp[k].pitch);
+			c.tmp[k].yaw = c.tmp[k].yaw + t * (c.tmp[k+1].yaw - c.tmp[k].yaw);
+		}
+        i--;
+    }
+    return c.tmp[0];
+}
+
+//t is the percentage amount to lerp, range is 0 - 1
+float lerpFloat(float from, float to, float t)
+{
+	return from + (to - from)*t;
+}
 ////////////////////////////////////////////////////////////////////
 
 // KEEP FRICTION BETWEEN -1 <-> 0 OR YOU WILL ACCELERATE TOO FAST AND CRASH
@@ -125,7 +155,7 @@ int32_t pad_redirect(uint32_t port_no, cellPadData *data) {
 
 	// Call to get the inputs from PS3 system
 	int32_t ret = cellPadGetData(port_no, data);
-
+	
 	// Button cooldown
 	if (c.buttonCooldown > 0)
 		c.buttonCooldown--;
@@ -178,6 +208,7 @@ int32_t pad_redirect(uint32_t port_no, cellPadData *data) {
 		c.lockWithoutStrafe = 0;
 		c.horizontal = 0.0f;
 		c.init = 1;
+		c.tSpeed = 0.001f;
 	}
 
 	// Toggle for whether or not camera should move whilst in freecam mode.
@@ -187,6 +218,7 @@ int32_t pad_redirect(uint32_t port_no, cellPadData *data) {
 		c.operatingCamera = !c.operatingCamera;
 	}
 	
+	/*
 	// Cycle lookat mode.
 	if (data->BTN_R2 && c.buttonCooldown == 0){
 		c.buttonCooldown = 20;
@@ -195,14 +227,16 @@ int32_t pad_redirect(uint32_t port_no, cellPadData *data) {
 			c.lookAtMode = 0;
 		vec_clear(&c.iter);
 	}
-	
-	// WORK IN PROGRESS. Smooth camera toggle
-	/*
-	if(data->BTN_CROSS && c.buttonCooldown == 0){
-		c.buttonCooldown = 20;
-		c.isSmooth = !c.isSmooth;
+	*/ 
+	// replaces old button shit
+	if (c.cycleLookAt){
+		c.lookAtMode++;
+		if (c.lookAtMode > 2)
+			c.lookAtMode = 0;
+		vec_clear(&c.iter);
+		
+		c.cycleLookAt = 0; // resets it back
 	}
-	 */
 	
 	// Save our camera position to savedPosition if racman command was toggled
 	if(c.saveCamPosition){
@@ -258,28 +292,10 @@ int32_t pad_redirect(uint32_t port_no, cellPadData *data) {
 		case LOOK_AT_MODE_TARGET:
 			if (c.lookAtTarget.x == 0.0f)
 				setlookAtTarget(); 
-			if (c.isSmooth){
-				if((length(vec_add(c.lookAtTarget, scalar_multiplication(-1.0, c.lookatpos)))) - length(c.iter) < 0.01){
-					lookAt(c.lookAtTarget);
-				}
-				else
-					c.iter = vec_add(c.iter, scalar_multiplication(0.001f, vec_add(c.lookAtTarget, scalar_multiplication(-1.0, c.lookatpos))));
-					lookAt(vec_add(c.iter, c.lookatpos)); 
-			}
-			else
-				lookAt(c.lookAtTarget);
+			lookAt(c.lookAtTarget);
 			break;
 		case LOOK_AT_MODE_RATCHET:
-			if (c.isSmooth){
-				if((length(vec_add(player_coords, scalar_multiplication(-1.0, c.lookatpos)))) - length(c.iter) < 0.01){
-					lookAt(player_coords);
-				}
-				else
-					c.iter = vec_add(c.iter, scalar_multiplication(0.001f, vec_add(player_coords, scalar_multiplication(-1.0, c.lookatpos))));
-					lookAt(vec_add(c.iter, c.lookatpos));
-			}
-			else
-				lookAt(player_coords);
+			lookAt(player_coords);
 			break;
 	}
 	
@@ -366,6 +382,48 @@ int32_t pad_redirect(uint32_t port_no, cellPadData *data) {
 		temp.z = c.lock.z;
 		camera->pos = vec_add(player_coords, temp);
 	}
+	
+	//SAVE INTO LERPPOINTS
+	//if(data->BTN_CROSS && c.buttonCooldown == 0)
+	if(c.saveLerpPoint)
+	{
+		c.saveLerpPoint = 0;
+		c.buttonCooldown = 20;
+		if(c.lerpCount < 31)
+		{
+			c.lerpPoints[c.lerpCount].pos = camera->pos;
+			c.lerpPoints[c.lerpCount].pitch = c.pitch;
+			c.lerpPoints[c.lerpCount].yaw = c.yaw;
+			c.lerpCount++;	
+		}
+	}
+	//LERP
+	if(c.Lerping)
+	{
+		LerpPoint temp = BezierCurve(c.lerpPoints, c.lerpCount, c.t);
+		c.t = c.t + c.tSpeed;
+		camera->pos = temp.pos;
+		c.pitch = temp.pitch;
+		c.yaw = temp.yaw;		
+		if (c.t > 1.0f)
+		{
+			// c.Lerping = 0;
+			//c.t = 0.0f;
+			c.t = 1.0f;
+		}
+		if(c.t < 0.0f) 
+			c.t = 0;
+	}
+	/*
+	if(data->BTN_TRIANGLE)
+	{
+		c.Lerping = 1;
+	}
+	if(data->BTN_SQUARE)
+	{
+		c.lerpCount = 0;
+	}*/
+	
 	
 	// Make sure these inputs don't actually go to the game while freecam mode is running.
 	data->BTN_SELECT = NO_INPUT;
